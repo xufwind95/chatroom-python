@@ -1,9 +1,6 @@
-"""聊天室简单实现
-   功能:公告和收发信息
-"""
+"""聊天室简单实现"""
 from socket import *
 from select import *
-import threading
 import os
 
 
@@ -14,11 +11,17 @@ class ChatRoom():
         self.inputs = inputs
         self.servsock = servsock
 
+    def getmembers(self):
+        m = [m['name']
+             for m in self.members if m['sockfd'] is not self.servsock]
+        members_str = '`room-members#`:' + ','.join(m)
+        return members_str
+
     def register(self, sockfd, data):
         """认证登记"""
         name = data[7:]
         self.members.append({'name': name, 'sockfd': sockfd})
-        self.brocast(name + ' 登入系统')
+        self.brocast(name + ' 登入系统' + self.getmembers())
 
     def logout(self, sockfd):
         """退出聊天室"""
@@ -32,9 +35,7 @@ class ChatRoom():
         self.inputs.remove(sockfd)
         if name:
             self.members.remove(remv_member)
-            if name == 'server':
-                print('server come here...')
-            self.brocast(name + '退出系统')
+            self.brocast(name + '退出系统' + self.getmembers())
 
     def say(self, msg, sockfd):
         """发言"""
@@ -42,10 +43,9 @@ class ChatRoom():
         for d in self.members:
             if d['sockfd'] is sockfd:
                 name = d['name']
-        sendmsg = name + ' say:' + msg
-        print(sendmsg)
+        sendmsg = name + ' #say#`:' + msg
         for d in self.members:
-            if d['sockfd'] is not sockfd and d['sockfd'] is not self.servsock:
+            if d['sockfd'] is not self.servsock:
                 try:
                     d['sockfd'].send(sendmsg.encode())
                 except BrokenPipeError:
@@ -53,8 +53,8 @@ class ChatRoom():
 
     def brocast(self, msg):
         """发布公告"""
-        sendmsg = 'server say:' + msg
-        print(sendmsg)
+        sendmsg = 'server #say#`:' + msg
+        print(msg)
         for d in self.members:
             if d['sockfd'] is not self.servsock:
                 try:
@@ -76,14 +76,6 @@ class ChatRoom():
         return self.members
 
 
-def server_say(house):
-    """系统公告"""
-    while True:
-        s = input()
-        if s:
-            house.brocast(s)
-
-
 def main():
     s = socket()
     s.bind(('0.0.0.0', 9999))
@@ -93,10 +85,6 @@ def main():
     members = [{'name': 'server', 'sockfd': s}]
     house = ChatRoom(members, inputs, s)
     print('server started......')
-    # 服务器要发信息的话，也在子线程完成
-    t = threading.Thread(target=server_say, args=(house,))
-    t.setDaemon(True)
-    t.start()
     while True:
         try:
             rs, ws, es = select(house.get_inputs(), [], [])
